@@ -1,0 +1,27 @@
+plugins {
+    id 'application'
+    id 'scala'
+    id 'com.github.johnrengelman.shadow' version '7.0.0'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.scala-lang:scala-library:2.12.14'
+    implementation 'org.apache.spark:spark-sql_2.12:3.1.2'
+    implementation 'org.apache.spark:spark-graphx_2.12:3.1.2'
+    implementation 'org.apache.spark:spark-yarn_2.12:3.1.2'
+    implementation 'com.martinkl.warc:warc-hadoop:0.1.0'
+    implementation 'org.jsoup:jsoup:1.13.1'
+}
+
+application {
+  mainClass = "SalsaBench.App"
+}
+
+shadowJar {
+    mergeServiceFiles()
+    zip64 true
+}
