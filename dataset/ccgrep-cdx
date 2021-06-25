@@ -1,0 +1,23 @@
+#!/bin/sh
+BASE_URL="https://index.commoncrawl.org/"
+Q=$1
+CC_ID=$2
+
+index_url="${BASE_URL}collinfo.json"
+
+if [ -n "$CC_ID" ]; then
+	cc_id_filter="select(.id == \"${CC_ID}\")"
+else
+	cc_id_filter="select(.id)"
+fi
+
+for cdx_api in $(curl -s "${index_url}" | jq -r ".[] | ${cc_id_filter} | .\"cdx-api\""); do
+	cdx_q_pages_url="${cdx_api}?output=json&url=${Q}&showNumPages=true"
+	cdx_q_pages=$(while ! curl -s "${cdx_q_pages_url}" | grep '{'; do :; done | jq '.pages')
+
+	for page in $(seq 0 $((cdx_q_pages - 1))); do
+		cdx_q_url="${cdx_api}?output=json&url=${Q}&page=${page}"
+
+		while ! curl -s "${cdx_q_url}" | grep '{'; do :; done
+	done
+done
