@@ -6,11 +6,11 @@
 }:
 
 let
-  pname = "salsa-bench";
+  pname = "pi-bench";
   version = "1";
 
   src = builtins.filterSource (path: type: !(
-    (baseNameOf path == "infra") || (baseNameOf path == "dataset")
+    (baseNameOf path == "infra") || (baseNameOf path == "build")
   )) ./.;
 
   gradle = (gradleGen.override (old: { java = jdk; })).gradle_7;
@@ -33,7 +33,7 @@ let
     '';
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "068cay20hlmnylwxrj1h3inxc4b8qi2b95510a50mz2plb6fkr93";
+    outputHash = "0fnccqakji0gngjwr3i2gp47rvh3zc34rsf93z90z2kahjj1gksa";
   };
 
 in
@@ -59,6 +59,6 @@ stdenv.mkDerivation rec {
 
   installPhase = with lib; ''
     mkdir -p $out/share/java
-    install -Dm644 build/libs/salsa-bench-all.jar $out/share/java/salsa-bench.jar
+    install -Dm644 build/libs/pi-bench-all.jar $out/share/java/pi-bench.jar
   '';
 }

@@ -1,6 +1,7 @@
 { nrSparkWorkers ? 0
 , vcores
 , ram
+, rootDiskSize
 , instanceType
 , accessKeyId
 , region }:
@@ -11,6 +12,8 @@ let
   default = { resources, ... }: {
     deployment.targetEnv = "ec2";
     deployment.ec2.accessKeyId = accessKeyId;
+    deployment.ec2.ebsBoot = true;
+    deployment.ec2.ebsInitialRootDiskSize = rootDiskSize;
     deployment.ec2.instanceType = instanceType;
     deployment.ec2.keyPair = resources.ec2KeyPairs.keypair;
     deployment.ec2.region = region;

@@ -4,4 +4,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = 'salsa-bench'
+rootProject.name = 'pi-bench'

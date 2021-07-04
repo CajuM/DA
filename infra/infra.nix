@@ -36,7 +36,7 @@ let
         environment.systemPackages = [ ] ++ (lib.optionals (master) [
 	  pkgs.hadoop
 	  pkgs.spark3
-	  pkgs.salsaBench
+	  pkgs.piBench
 	]);
 
         networking.firewall.enable = false;
@@ -86,7 +86,7 @@ let
 	  tmpfiles.rules = [
 	    "d /var/log/yarn 0770 root hadoop -"
       	  ] ++ (lib.optionals (master) [
-	    "L+ /root/salsa-bench.jar - - - - ${pkgs.salsaBench}/share/java/salsa-bench.jar"
+	    "L+ /root/pi-bench.jar - - - - ${pkgs.piBench}/share/java/pi-bench.jar"
 	  ]);
 	} // (if master then {
 	  services.hdfs-namenode = {
