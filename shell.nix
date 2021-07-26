@@ -34,8 +34,8 @@ let
     botocore
   ]);
 
-  salsaBenchEnv = with myPkgs; stdenv.mkDerivation {
-    name = "salsa-bench-env";
+  pageRankBenchEnv = with myPkgs; stdenv.mkDerivation {
+    name = "pagerank-bench-env";
     buildInputs = [
       jdk8
       myGradle
@@ -44,4 +44,4 @@ let
     ];
   };
 
-in salsaBenchEnv
+in pageRankBenchEnv

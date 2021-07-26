@@ -6,7 +6,7 @@
 }:
 
 let
-  pname = "salsa-bench";
+  pname = "pagerank-bench";
   version = "1";
 
   src = builtins.filterSource (path: type: !(
@@ -59,6 +59,6 @@ stdenv.mkDerivation rec {
 
   installPhase = with lib; ''
     mkdir -p $out/share/java
-    install -Dm644 build/libs/salsa-bench-all.jar $out/share/java/salsa-bench.jar
+    install -Dm644 build/libs/pagerank-bench-all.jar $out/share/java/pagerank-bench.jar
   '';
 }

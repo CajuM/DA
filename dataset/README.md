@@ -10,7 +10,7 @@ cat gov.ro.jl | ./ccget.py | gzip -9 >gov.ro.warc.gz
 
 # This will generate the final dataset which consists
 # of the anotated vertices and edges of the graph
-java -cp ../build/libs/salsa-bench-all.jar \
-  '-Dspark.master=local[*]' SalsaBench.App \
+java -cp ../build/libs/pagerank-bench-all.jar \
+  '-Dspark.master=local[*]' PageRankBench.App \
   subgraph gov.ro.warc.gz
 ```

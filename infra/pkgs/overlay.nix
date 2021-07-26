@@ -6,7 +6,7 @@ self: super: rec {
     jre = super.jre8;
   };
 
-  salsaBench = super.callPackage ../../default.nix {
+  pageRankBench = super.callPackage ../../default.nix {
     jdk = super.jdk8;
   };
 }
