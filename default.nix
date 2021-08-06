@@ -33,7 +33,7 @@ let
     '';
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "068cay20hlmnylwxrj1h3inxc4b8qi2b95510a50mz2plb6fkr93";
+    outputHash = "15vcqps8y27a3maackm3apb76vcbr4jplpz19zacd92603g7acsq";
   };
 
 in
@@ -59,6 +59,7 @@ stdenv.mkDerivation rec {
 
   installPhase = with lib; ''
     mkdir -p $out/share/java
+    install -Dm644 src/main/resources/log4j.properties $out/etc/log4j.properties
     install -Dm644 build/libs/pagerank-bench-all.jar $out/share/java/pagerank-bench.jar
   '';
 }

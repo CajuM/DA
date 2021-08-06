@@ -12,8 +12,12 @@ let
 
   makeSparkWorker = n: lib.attrsets.nameValuePair "spark-worker-${toString n}" default;
 
+  spark-master = {
+    spark-master = default;
+  };
+
+  spark-worker = builtins.listToAttrs (map makeSparkWorker (lib.lists.range 1 nrSparkWorkers));
+
 in
 
-{
-  spark-master = default;
-} // builtins.listToAttrs (map makeSparkWorker (lib.lists.range 1 nrSparkWorkers))
+spark-master // spark-worker

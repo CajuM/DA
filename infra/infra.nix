@@ -87,6 +87,7 @@ let
 	    "d /var/log/yarn 0770 root hadoop -"
       	  ] ++ (lib.optionals (master) [
 	    "L+ /root/pagerank-bench.jar - - - - ${pkgs.pageRankBench}/share/java/pagerank-bench.jar"
+	    "L+ /root/log4j.properties - - - - ${pkgs.pageRankBench}/etc/log4j.properties"
 	  ]);
 	} // (if master then {
 	  services.hdfs-namenode = {

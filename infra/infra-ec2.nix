@@ -21,9 +21,14 @@ let
 
   makeSparkWorker = n: lib.attrsets.nameValuePair "spark-worker-${toString n}" default;
 
+  spark-master = {
+    spark-master = default;
+  };
+
+  spark-workers = builtins.listToAttrs (map makeSparkWorker (lib.lists.range 1 nrSparkWorkers));
+
 in
 
 {
   resources.ec2KeyPairs.keypair = { inherit region accessKeyId; };
-  spark-master = default;
-} // builtins.listToAttrs (map makeSparkWorker (lib.lists.range 1 nrSparkWorkers))
+} // spark-master // spark-workers
