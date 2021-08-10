@@ -1,16 +1,22 @@
 package PageRankBench
 
 
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel
 
-import org.apache.spark.graphx.{Graph, GraphLoader, PartitionStrategy, TripletFields}
+import org.apache.spark.graphx.Graph
+import org.apache.spark.graphx.GraphLoader
+import org.apache.spark.graphx.PartitionStrategy
+import org.apache.spark.graphx.TripletFields
 import org.apache.spark.graphx.lib.PageRank
+import org.apache.spark.graphx.impl.GraphImpl
 
 
 object App {
+  val logTag = "[PageRankBench]"
+
   def main(args: Array[String]): Unit = {
-    val logTag = "[PageRankBench]"
 
     val conf = new SparkConf()
       .setAppName("PageRankBench")
@@ -18,16 +24,16 @@ object App {
 
     val sc = new SparkContext(conf)
 
-    val pgr = args(0) match {
-      case "myPgR" => myPageRank(_, _, _)
-      case "sparkPgR" => PageRank.run[Int, Int](_, _, _)
+    val alg = args(0) match {
+      case "mySALSA1" => mySALSA1(_, _)
+      case "mySALSA2" => mySALSA2(_, _)
     }
 
     val edgesFile = args(1)
     val numIter = args(2).toInt
     val partMul = args(3).toInt
 
-    println(s"${logTag} function=${args(0)}; dataset=${args(1)}; iterations=${args(2)}; partitionsx=${args(3)};")
+    println(s"${logTag} Function: ${args(0)}; Dataset: ${args(1)}; Iterations: ${args(2)}; Partitionsx: ${args(3)};")
 
     val unPartitionedGraph: Graph[Int, Int] = GraphLoader
       .edgeListFile(sc, edgesFile)
@@ -37,6 +43,7 @@ object App {
       unPartitionedGraph.edges.repartition(sc.defaultParallelism * partMul)
     )
       .partitionBy(PartitionStrategy.RandomVertexCut)
+      .cache
 
     graph.vertices.foreachPartition(x => {})
     graph.edges.foreachPartition(x => {})
@@ -49,13 +56,19 @@ object App {
 
     val startTime = System.nanoTime()
 
-    val rankGraph = pgr(graph, numIter, 0.15)
+    val rankGraph = alg(graph, numIter)
 
-    println(s"${logTag} Ranks:")
+    println(s"${logTag} Authority ranks:")
     rankGraph
       .vertices
-      .takeOrdered(10)(Ordering[Double].reverse on { case (_, rank) => rank })
-      .foreach { case (vid, rank) => println(s"${logTag} ${vid} ${rank}") }
+      .takeOrdered(10)(Ordering[Double].reverse on { case (_, (arank: Double, _)) => arank })
+      .foreach { case (vid, (arank, _)) => println(s"${logTag}   ${vid} ${arank}") }
+
+    println(s"${logTag} Hub ranks:")
+    rankGraph
+      .vertices
+      .takeOrdered(10)(Ordering[Double].reverse on { case (_, (_, hrank: Double)) => hrank })
+      .foreach { case (vid, (_, hrank)) => println(s"${logTag}   ${vid} ${hrank}") }
 
     val endTime = System.nanoTime()
     val totalTime = (endTime -  startTime).toDouble / 10e9
@@ -64,40 +77,169 @@ object App {
     sc.stop()
   }
 
-  def myPageRank(graph: Graph[Int, Int], numIter: Int, resetProb: Double = 0.15): Graph[Double, Double] = {
-    var rankGraph: Graph[Double, Double] = graph
-      .outerJoinVertices(graph.outDegrees) { (_, _, deg) => deg.getOrElse(0) }
-      .mapTriplets(e => 1.0 / e.srcAttr, TripletFields.Src)
-      .mapVertices { (_, _) => 1.0 }
+  def mySALSA1(graph: Graph[Int, Int], numIter: Int): Graph[(Double, Double), (Double, Double)] = {
+    val numAuthorities = graph
+      .outerJoinVertices(graph.inDegrees) { (_, _, deg) => deg match {
+        case Some(_) => 1
+        case None => 0
+      } }
+      .vertices
+      .reduce { case ((_, cnt1), (_, cnt2)) => (0L, cnt1 + cnt2) }
+      ._2
 
-    var rankVertices = rankGraph.vertices.cache
-    val rankEdges = rankGraph.edges.cache
+    val numHubs = graph
+      .outerJoinVertices(graph.outDegrees) { (_, _, deg) => deg match {
+        case Some(_) => 1
+        case None => 0
+      } }
+      .vertices
+      .reduce { case ((_, cnt1), (_, cnt2)) => (0L, cnt1 + cnt2) }
+      ._2
 
-    rankVertices.foreachPartition(x => {})
-    rankEdges.foreachPartition(x => {})
+    println(s"${logTag} Authorities: ${numAuthorities}; Hubs: ${numHubs};")
+
+    var rankGraph: Graph[(Double, Double), (Double, Double)] = graph
+      .outerJoinVertices(graph.outDegrees) { (_, _, outdeg) => outdeg.getOrElse(0) }
+      .outerJoinVertices(graph.inDegrees) { (_, outdeg, indeg) => (indeg.getOrElse(0), outdeg) }
+      .mapTriplets(e => (1.0 / e.dstAttr._1, 1.0 / e.srcAttr._2), TripletFields.All)
+      .mapVertices { (_, _) => (1.0 / numAuthorities, 1.0 / numHubs) }
+      .cache
 
     for { _ <- 1 to numIter } {
-      val prevRankVertices = rankVertices
+      val prevRankGraph = rankGraph
 
-      val tmpGraph = Graph(rankVertices, rankEdges)
-
-      rankVertices = tmpGraph
-        .aggregateMessages[Double](
+      val arankVertices1 = rankGraph
+        .aggregateMessages[(Double, Double)](
           ctx => {
-            val rank = resetProb + (1.0 - resetProb) * ctx.srcAttr * ctx.attr
-            ctx.sendToDst(rank)
+            val (darank, _) = ctx.dstAttr
+            val (indeg, _) = ctx.attr
+
+            ctx.sendToSrc((darank * indeg, 0.0))
           },
-          _ + _,
+          { case ((arank1, _), (arank2, _)) => (arank1 + arank2, 0.0) },
+          TripletFields.Dst
+        )
+
+      val arankVertices = rankGraph
+        .outerJoinVertices(arankVertices1) { (_, _, rank) => rank.getOrElse((0.0, 0.0)) }
+        .aggregateMessages[(Double, Double)](
+          ctx => {
+            val (sparank, _) = ctx.srcAttr
+            val (_, outdeg) = ctx.attr
+
+            ctx.sendToDst((sparank * outdeg, 0.0))
+          },
+          { case ((arank1, _), (arank2, _)) => (arank1 + arank2, 0.0) },
           TripletFields.Src
         )
-        .cache
 
-      rankVertices.foreachPartition(x => {})
+      val hrankVertices1 = rankGraph
+        .aggregateMessages[(Double, Double)](
+          ctx => {
+            val (_, dhrank) = ctx.srcAttr
+            val (_, outdeg) = ctx.attr
 
-      prevRankVertices.unpersist()
-      tmpGraph.vertices.unpersist()
+            ctx.sendToDst((0.0, dhrank * outdeg))
+          },
+          { case ((_, hrank1), (_, hrank2)) => (0.0, hrank1 + hrank2) },
+          TripletFields.Src
+        )
+
+      val hrankVertices = rankGraph
+        .outerJoinVertices(hrankVertices1) { (_, _, rank) => rank.getOrElse((0.0, 0.0)) }
+        .aggregateMessages[(Double, Double)](
+          ctx => {
+            val (_, sphrank) = ctx.dstAttr
+            val (indeg, _) = ctx.attr
+
+            ctx.sendToSrc((0.0, sphrank * indeg))
+          },
+          { case ((_, hrank1), (_, hrank2)) => (0.0, hrank1 + hrank2) },
+          TripletFields.Dst
+        )
+
+      rankGraph = rankGraph
+        .outerJoinVertices(arankVertices) { case (_, _, arank) => arank.getOrElse((0.0, 0.0)) }
+        .outerJoinVertices(hrankVertices) { case (_, arank, hrank) => (arank._1, hrank.getOrElse(0.0, 0.0)._2) }
+
+      rankGraph.cache
+      rankGraph.edges.foreachPartition(x => {})
+
+      prevRankGraph.vertices.unpersist()
     }
 
-    Graph(rankVertices, rankEdges)
+    rankGraph
+  }
+
+  def mySALSA2(graph: Graph[Int, Int], numIter: Int): Graph[(Double, Double), (Double, Double)] = {
+    val numAuthorities = graph
+      .outerJoinVertices(graph.inDegrees) { (_, _, deg) => deg match {
+        case Some(_) => 1
+        case None => 0
+      } }
+      .vertices
+      .reduce { case ((_, cnt1), (_, cnt2)) => (0L, cnt1 + cnt2) }
+      ._2
+
+    val numHubs = graph
+      .outerJoinVertices(graph.outDegrees) { (_, _, deg) => deg match {
+        case Some(_) => 1
+        case None => 0
+      } }
+      .vertices
+      .reduce { case ((_, cnt1), (_, cnt2)) => (0L, cnt1 + cnt2) }
+      ._2
+
+    println(s"${logTag} Authorities: ${numAuthorities}; Hubs: ${numHubs};")
+
+    var rankGraph: Graph[(Double, Double), (Double, Double)] = graph
+      .outerJoinVertices(graph.outDegrees) { (_, _, outdeg) => outdeg.getOrElse(0) }
+      .outerJoinVertices(graph.inDegrees) { (_, outdeg, indeg) => (indeg.getOrElse(0), outdeg) }
+      .mapTriplets(e => (1.0 / e.dstAttr._1, 1.0 / e.srcAttr._2), TripletFields.All)
+      .mapVertices { (_, _) => (1.0 / numAuthorities, 1.0 / numHubs) }
+      .cache
+
+    for { _ <- 1 to numIter } {
+      val prevRankGraph = rankGraph
+
+      val rankVertices1 = rankGraph
+        .aggregateMessages[(Double, Double)](
+          ctx => {
+            val (_, shrank) = ctx.srcAttr
+            val (darank, _) = ctx.dstAttr
+            val (indeg, outdeg) = ctx.attr
+
+            ctx.sendToSrc((darank * indeg, 0.0))
+            ctx.sendToDst((0.0, shrank * outdeg))
+          },
+          { case ((arank1, hrank1), (arank2, hrank2)) => (arank1 + arank2, hrank1 + hrank2) },
+          TripletFields.All
+        )
+
+      val rankVertices = rankGraph
+        .outerJoinVertices(rankVertices1) { (_, _, rank) => rank.getOrElse((0.0, 0.0)) }
+        .aggregateMessages[(Double, Double)](
+          ctx => {
+            val (sparank, _) = ctx.srcAttr
+            val (_, sphrank) = ctx.dstAttr
+            val (indeg, outdeg) = ctx.attr
+
+            ctx.sendToDst((sparank * outdeg, 0.0))
+            ctx.sendToSrc((0.0, sphrank * indeg))
+          },
+          { case ((arank1, hrank1), (arank2, hrank2)) => (arank1 + arank2, hrank1 + hrank2) },
+          TripletFields.All
+        )
+
+      rankGraph = rankGraph
+        .outerJoinVertices(rankVertices) { case (_, _, rank) => rank.getOrElse(0.0, 0.0) }
+
+      rankGraph.cache
+      rankGraph.edges.foreachPartition(x => {})
+
+      prevRankGraph.vertices.unpersist()
+    }
+
+    rankGraph
   }
 }
