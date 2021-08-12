@@ -10,7 +10,7 @@ let
   version = "1";
 
   src = builtins.filterSource (path: type: !(
-    (baseNameOf path == "infra") || (baseNameOf path == "dataset") || (baseNameOf path == "build")
+    (baseNameOf path == "infra") || (baseNameOf path == "build")
   )) ./.;
 
   gradle = (gradleGen.override (old: { java = jdk; })).gradle_7;
@@ -23,7 +23,7 @@ let
     nativeBuildInputs = [ gradle perl ];
     buildPhase = ''
       export GRADLE_USER_HOME=$(mktemp -d)
-      gradle --no-daemon --no-watch-fs shadowJar
+      gradle --no-daemon --no-watch-fs jar
     '';
     # perl code mavenizes paths (com.squareup.okio/okio/1.13.0/a9283170b7305c8d92d25aff02a6ab7e45d06cbe/okio-1.13.0.jar -> com/squareup/okio/okio/1.13.0/okio-1.13.0.jar)
     installPhase = ''
@@ -54,12 +54,12 @@ stdenv.mkDerivation rec {
     sed -ie "s#mavenCentral()#maven { url '${deps}' }#g" build.gradle
     sed -ie "s#gradlePluginPortal()#maven { url '${deps}' }#g" settings.gradle
 
-    gradle --no-watch-fs --offline --no-daemon shadowJar -Pbuildversion=${version}
+    gradle --no-watch-fs --offline --no-daemon jar -Pbuildversion=${version}
   '';
 
   installPhase = with lib; ''
-    mkdir -p $out/share/java
+    install -Dm755 salsa-bench.sh $out/bin/salsa-bench.sh
     install -Dm644 src/main/resources/log4j.properties $out/etc/log4j.properties
-    install -Dm644 build/libs/pagerank-bench-all.jar $out/share/java/pagerank-bench.jar
+    install -Dm644 build/libs/pagerank-bench.jar $out/share/java/pagerank-bench.jar
   '';
 }

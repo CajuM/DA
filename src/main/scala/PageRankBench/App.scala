@@ -25,24 +25,22 @@ object App {
 
     val sc = new SparkContext(conf)
 
-    val alg = args(0) match {
+    val edgesFile = args(0)
+
+    val alg = args(1) match {
       case "mySALSA1" => mySALSA1(_, _)
       case "mySALSA2" => mySALSA2(_, _)
       case "mySALSA3" => mySALSA3(_, _)
     }
 
-    val edgesFile = args(1)
-    val numIter = args(2).toInt
-    val partMul = args(3).toInt
-
-    println(s"${logTag} Function: ${args(0)}; Dataset: ${args(1)}; Iterations: ${args(2)}; Partitionsx: ${args(3)};")
+    val iters = args(2).toInt
 
     val unPartitionedGraph: Graph[Int, Int] = GraphLoader
       .edgeListFile(sc, edgesFile)
 
     val graph = Graph(
-      unPartitionedGraph.vertices.repartition(sc.defaultParallelism * partMul),
-      unPartitionedGraph.edges.repartition(sc.defaultParallelism * partMul)
+      unPartitionedGraph.vertices.repartition(sc.defaultParallelism),
+      unPartitionedGraph.edges.repartition(sc.defaultParallelism)
     )
       .partitionBy(PartitionStrategy.RandomVertexCut)
       .cache
@@ -56,9 +54,11 @@ object App {
     println(s"${logTag} Vertices: ${realVertices};")
     println(s"${logTag} Edges: ${realEdges};")
 
+    println(s"${logTag} ClusterSize: ${sc.defaultParallelism}; Dataset: ${args(0)}; Function: ${args(1)}; Iterations: ${args(2)};")
+
     val startTime = System.nanoTime()
 
-    val rankGraph = alg(graph, numIter)
+    val rankGraph = alg(graph, iters)
 
     println(s"${logTag} Authority ranks:")
     rankGraph
@@ -76,6 +76,7 @@ object App {
     val totalTime = (endTime -  startTime).toDouble / 1e9
 
     println(s"${logTag} Time: ${totalTime}")
+
     sc.stop()
   }
 
@@ -122,8 +123,10 @@ object App {
           TripletFields.Dst
         )
 
-      val arankVertices = rankGraph
+      val arankGraph = rankGraph
         .outerJoinVertices(arankVertices1) { (_, _, rank) => rank.getOrElse((0.0, 0.0)) }
+
+      val arankVertices = arankGraph
         .aggregateMessages[(Double, Double)](
           ctx => {
             val (sparank, _) = ctx.srcAttr
@@ -147,8 +150,10 @@ object App {
           TripletFields.Src
         )
 
-      val hrankVertices = rankGraph
+      val hrankGraph = rankGraph
         .outerJoinVertices(hrankVertices1) { (_, _, rank) => rank.getOrElse((0.0, 0.0)) }
+
+      val hrankVertices = hrankGraph
         .aggregateMessages[(Double, Double)](
           ctx => {
             val (_, sphrank) = ctx.dstAttr
@@ -160,14 +165,32 @@ object App {
           TripletFields.Dst
         )
 
-      rankGraph = rankGraph
+      val rankGraph1 = rankGraph
         .outerJoinVertices(arankVertices) { case (_, _, arank) => arank.getOrElse((0.0, 0.0)) }
+
+      rankGraph = rankGraph1
         .outerJoinVertices(hrankVertices) { case (_, arank, hrank) => (arank._1, hrank.getOrElse(0.0, 0.0)._2) }
 
       rankGraph.cache
       rankGraph.edges.foreachPartition(x => {})
 
+      arankVertices1.unpersist()
+      arankVertices.unpersist()
+
+      hrankVertices1.unpersist()
+      hrankVertices.unpersist()
+
       prevRankGraph.vertices.unpersist()
+      prevRankGraph.edges.unpersist()
+
+      arankGraph.vertices.unpersist()
+      arankGraph.edges.unpersist()
+
+      hrankGraph.vertices.unpersist()
+      hrankGraph.edges.unpersist()
+
+      rankGraph1.vertices.unpersist()
+      rankGraph1.edges.unpersist()
     }
 
     rankGraph
@@ -218,8 +241,10 @@ object App {
           TripletFields.All
         )
 
-      val rankVertices = rankGraph
+      val rankGraph1 = rankGraph
         .outerJoinVertices(rankVertices1) { (_, _, rank) => rank.getOrElse((0.0, 0.0)) }
+
+      val rankVertices = rankGraph1
         .aggregateMessages[(Double, Double)](
           ctx => {
             val (sparank, _) = ctx.srcAttr
@@ -239,7 +264,15 @@ object App {
       rankGraph.cache
       rankGraph.edges.foreachPartition(x => {})
 
+      prevRankGraph.edges.unpersist()
       prevRankGraph.vertices.unpersist()
+
+      rankVertices1.unpersist()
+
+      rankGraph1.edges.unpersist()
+      rankGraph1.vertices.unpersist()
+
+      rankVertices.unpersist()
     }
 
     rankGraph
@@ -330,6 +363,9 @@ object App {
       rankGraph.edges.foreachPartition(x => {})
 
       prevRankGraph.vertices.unpersist()
+      prevRankGraph.edges.unpersist()
+
+      rankVertices.unpersist()
     }
 
     rankGraph

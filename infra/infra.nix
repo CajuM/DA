@@ -33,10 +33,12 @@ let
 	  HADOOP_CONF_DIR = "${hadoopConf}";
 	};
 
-        environment.systemPackages = [ ] ++ (lib.optionals (master) [
-	  pkgs.hadoop
-	  pkgs.spark3
-	  pkgs.pageRankBench
+        environment.systemPackages = with pkgs; [
+	  tmux
+	] ++ (lib.optionals (master) [
+	  hadoop
+	  pageRankBench
+	  spark3
 	]);
 
         networking.firewall.enable = false;
@@ -86,8 +88,7 @@ let
 	  tmpfiles.rules = [
 	    "d /var/log/yarn 0770 root hadoop -"
       	  ] ++ (lib.optionals (master) [
-	    "L+ /root/pagerank-bench.jar - - - - ${pkgs.pageRankBench}/share/java/pagerank-bench.jar"
-	    "L+ /root/log4j.properties - - - - ${pkgs.pageRankBench}/etc/log4j.properties"
+	    "L+ /root/salsa-bench.sh - - - - ${pkgs.pageRankBench}/bin/salsa-bench.sh"
 	  ]);
 	} // (if master then {
 	  services.hdfs-namenode = {

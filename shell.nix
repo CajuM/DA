@@ -27,11 +27,14 @@
 let
   myGradle = (myPkgs.gradleGen.override (old: { java = myPkgs.jdk8; })).gradle_7;
 
-  myPython = myPkgs.python38;
+  myPython = myPkgs.python39;
 
   myPythonEnv = myPython.withPackages (ps: with ps; [
     boto3
     botocore
+    matplotlib
+    numpy
+    pandas
   ]);
 
   pageRankBenchEnv = with myPkgs; stdenv.mkDerivation {
